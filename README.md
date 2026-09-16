@@ -1,126 +1,147 @@
 # Market Data ETL Pipeline
 
-## 1. Project Overview
+A Python-based market data ETL pipeline that extracts market data from an API, validates and transforms the data, detects outliers, calculates VWAP, and loads the processed records into PostgreSQL.
 
-This project implements a market data ETL pipeline that extracts market data from an API, validates and transforms the records, detects price outliers, and loads the processed data into PostgreSQL.
+## Project Overview
 
-The pipeline is containerized using Docker Compose.
+This project demonstrates a complete ETL workflow for market data processing.
 
-## 2. Architecture
+The pipeline performs the following operations:
+
+1. Extracts market data from an external API.
+2. Validates incoming records using Pydantic.
+3. Handles invalid records through dead-letter logging.
+4. Calculates Volume Weighted Average Price (VWAP).
+5. Detects price outliers using the IQR method.
+6. Loads processed records into PostgreSQL.
+7. Prevents duplicate records using a unique constraint.
+8. Logs pipeline activities in JSON format.
+9. Supports continuous batch processing.
+
+## Architecture
 
 ```text
 Market Data API
-      |
-      v
-   Extract
-      |
-      v
-   Validate
-      |
-      v
- Calculate VWAP
-      |
-      v
- Detect Outliers
-      |
-      v
- PostgreSQL
+       |
+       v
+Data Extraction
+       |
+       v
+Data Validation
+       |
+       v
+Data Transformation
+       |
+       +--> VWAP Calculation
+       |
+       +--> IQR Outlier Detection
+       |
+       v
+PostgreSQL Database
+       |
+       v
+Structured Logs
 ```
 
-## 3. Technologies Used
+## Technology Stack
 
-* Python 3.12
-* Requests
-* Pydantic
-* NumPy
-* PostgreSQL
-* Psycopg2
-* Docker
-* Docker Compose
-* Pytest
-* Python JSON Logger
+- Python
+- FastAPI
+- Pydantic
+- PostgreSQL
+- NumPy
+- Requests
+- Docker
+- Docker Compose
+- Pytest
+- JSON Logging
 
-## 4. ETL Workflow
+## Project Structure
 
-### Extract
+```text
+market-data-etl/
+│
+├── api/
+│   └── ...
+│
+├── db/
+│   └── ...
+│
+├── etl/
+│   ├── main.py
+│   └── tests/
+│
+├── logs/
+│
+├── .env.example
+├── .gitignore
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
+```
 
-The pipeline retrieves market data from the configured API endpoint.
+## Key Features
 
-Features:
+### Data Extraction
 
-* HTTP request timeout
-* Retry mechanism
-* Exponential backoff
-* Graceful shutdown support
-* Error logging
+- Fetches market data from an API.
+- Uses retry handling for temporary API failures.
+- Applies request timeouts.
+- Supports repeated batch execution.
 
-### Validate
+### Data Validation
 
-Each record is validated using a Pydantic model.
+Incoming records are validated using Pydantic.
 
 Validation includes:
 
-* `instrument_id` must be a string
-* `price` must be greater than zero
-* `volume` must be greater than or equal to zero
-* `timestamp` must be a valid datetime
-* Optional VWAP field
-* Outlier flag
+- Instrument identifier
+- Positive price
+- Non-negative volume
+- Valid timestamp
+- Optional VWAP
+- Outlier status
 
-Timestamps are normalized to UTC.
+Invalid records are excluded from processing and recorded in the dead-letter log.
 
-Invalid records are rejected and written to the dead-letter log.
+### VWAP Calculation
 
-### Calculate VWAP
+The pipeline calculates Volume Weighted Average Price using the following formula:
 
-The pipeline calculates Volume Weighted Average Price for each instrument.
+\[
+VWAP = rac{\sum(price 	imes volume)}{\sum(volume)}
+\]
 
-Formula:
+VWAP is calculated separately for each instrument.
 
-```text
-VWAP = Sum(Price × Volume) / Sum(Volume)
-```
+### Outlier Detection
 
-The calculated VWAP is assigned to each record belonging to the same instrument.
-
-If the total volume is zero, VWAP is stored as `None`.
-
-### Detect Outliers
-
-The pipeline uses the Interquartile Range method.
+Price outliers are detected using the Interquartile Range method.
 
 ```text
 IQR = Q3 - Q1
 
 Lower Bound = Q1 - 1.5 × IQR
-
 Upper Bound = Q3 + 1.5 × IQR
 ```
 
-A record is marked as an outlier when its price is outside the calculated bounds for its instrument.
+Records outside the calculated bounds are marked as outliers.
 
-### Load
+### Database Loading
 
-Validated and transformed records are inserted into PostgreSQL.
+Processed records are stored in PostgreSQL.
 
 The loading process includes:
 
-* Database connection retries
-* Batch insertion
-* Transaction commit
-* Transaction rollback on failure
-* Duplicate protection
-* Inserted and duplicate record logging
+- Database connection retry handling
+- Transaction management
+- Duplicate record prevention
+- Batch insertion
+- Error logging
 
-## 5. Database
+## Database Schema
 
-Database name:
-
-```text
-market_data
-```
-
-Table name:
+The main table is:
 
 ```text
 marketdata
@@ -128,168 +149,98 @@ marketdata
 
 The table stores:
 
-* Instrument ID
-* Price
-* Volume
-* Timestamp
-* VWAP
-* Outlier flag
+- Instrument ID
+- Price
+- Volume
+- Timestamp
+- VWAP
+- Outlier flag
 
-The pipeline uses the following duplicate-protection rule:
+## Configuration
 
-```sql
-ON CONFLICT (instrument_id, timestamp) DO NOTHING
-```
+Create a local environment file using `.env.example` and configure the required API and PostgreSQL settings.
 
-## 6. Environment Variables
+The application uses environment variables for configuration so that deployment-specific values are not hardcoded in the source code.
 
-Create a `.env` file in the project root:
+## Running the Project
 
-```env
-API_URL=your_api_url
-
-DB_HOST=postgres
-DB_PORT=5432
-DB_NAME=market_data
-DB_USER=postgres
-DB_PASSWORD=your_password
-```
-
-Do not commit the actual `.env` file to Git.
-
-## 7. Running the Project
-
-Build and start the services:
+### 1. Clone the repository
 
 ```bash
-docker compose up --build
+git clone https://github.com/<your-username>/<your-repository>.git
+cd <your-repository>
 ```
 
-Start the ETL service:
+### 2. Create and activate a virtual environment
 
 ```bash
-docker compose up etl
+python -m venv .venv
 ```
 
-Run the services in detached mode:
+Windows:
+
+```bash
+.venv\Scripts\activate
+```
+
+Linux/macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Start the services
 
 ```bash
 docker compose up -d
 ```
 
-Check running containers:
+### 5. Run the ETL pipeline
 
 ```bash
-docker compose ps
+python etl/main.py
 ```
 
-Stop the services:
+## Testing
+
+The project includes automated tests covering the main ETL components.
+
+Run the tests using:
 
 ```bash
-docker compose down
+pytest
 ```
 
-## 8. Database Verification
+## Logging
 
-List databases:
+The pipeline generates structured JSON logs for:
 
-```bash
-docker compose exec postgres psql -U postgres -c "\l"
-```
+- API extraction
+- Validation failures
+- Transformation results
+- Database operations
+- Outlier detection
+- Pipeline errors
 
-List tables:
+## Future Improvements
 
-```bash
-docker compose exec postgres psql -U postgres -d market_data -c "\dt"
-```
+Possible future enhancements include:
 
-Inspect the table:
+- Adding Apache Kafka for real-time ingestion
+- Integrating Apache Spark for distributed processing
+- Adding cloud storage support
+- Introducing monitoring and alerting
+- Adding data quality dashboards
+- Supporting multiple market data providers
 
-```bash
-docker compose exec postgres psql -U postgres -d market_data -c "\d marketdata"
-```
+## Author
 
-View loaded records:
+**Kirtikumar**
 
-```bash
-docker compose exec postgres psql -U postgres -d market_data -c "SELECT * FROM marketdata LIMIT 10;"
-```
 
-Count records:
-
-```bash
-docker compose exec postgres psql -U postgres -d market_data -c "SELECT COUNT(*) FROM marketdata;"
-```
-
-## 9. Logging
-
-The pipeline uses structured JSON logging for:
-
-* API extraction
-* Retry attempts
-* Validation results
-* Dead-letter records
-* VWAP processing
-* Outlier detection
-* Database connection
-* Database loading
-* Transaction rollback
-* Batch completion
-* Shutdown events
-
-Invalid records are stored in:
-
-```text
-logs/dead_letter.jsonl
-```
-
-## 10. Project Structure
-
-```text
-Market-Data-Assessment/
-│
-├── api/
-├── db/
-├── etl/
-│   ├── main.py
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── tests/
-│
-├── logs/
-├── .env.example
-├── .gitignore
-├── docker-compose.yml
-└── README.md
-```
-
-## 11. Current Implementation Status
-
-### Implemented
-
-* API extraction
-* Retry handling
-* Pydantic validation
-* UTC timestamp normalization
-* Dead-letter logging
-* VWAP calculation
-* Zero-volume handling
-* IQR-based outlier detection
-* PostgreSQL loading
-* Duplicate protection
-* Transaction rollback
-* Structured logging
-* Graceful shutdown
-* Docker execution
-* End-to-end pipeline execution
-
-### Future Improvements
-
-* Add database integration tests
-* Add API mocking tests
-* Add ingestion timestamp
-* Add batch identifiers
-* Add monitoring and alerting
-* Add CI/CD using GitHub Actions
-* Replace the continuous loop with a production scheduler
-* Add data-quality dashboards
