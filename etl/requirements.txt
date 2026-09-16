@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+requests
+pydantic
+psycopg2-binary
+dotenv
+psycopg2
+numpy
+datetime 
+python-json-logger
+pytest
